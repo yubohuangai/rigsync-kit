@@ -13,11 +13,6 @@
 
 ![Leader in standby](docs/img/leader-standby.png)
 
-**The leader in standby** (here Phone 07 on the bench): header `LEADER`,
-status `wifi AP`, the three controls and the two sliders. `phase err` is how
-far this phone's frame timing sits from the leader's, red before alignment and
-green (about 0.1 ms) after step 4.
-
 ## Getting the files off the phones
 
 Each phone saves one video and one timestamp file per take in its shared
