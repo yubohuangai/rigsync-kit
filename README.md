@@ -1,25 +1,22 @@
 # RigSync kit
 
-Operator guide and post-processing tools for **RigSync**, the synchronized
-multi-phone video capture app running on an 11 × Pixel 7 rig. The app is
-installed on the rig's phones and is not distributed here. This repository is
-what a user of the rig needs: how to record a synchronized take, and how to
-turn the per-phone files into frame-aligned image sequences.
+How to record a synchronized take on the 11 × Pixel 7 rig, and how to turn
+the files off the phones into frame-aligned image sequences. The RigSync app
+is already installed on the rig's phones.
 
 **Roles.** Phone 1 hosts the Wi-Fi hotspot and is therefore the **leader**,
-the only phone with controls. Phones 2 to 11 join its hotspot as **clients**.
-The hotspot name and password are on the label on Phone 1's case, deliberately
-not in this public guide.
+the only phone with controls; Phones 2 to 11 join as **clients**. The hotspot
+name and password are on the label on Phone 1's case.
 
 ## Field guide
 
 | step | on | do | expect on screen | wait |
 |---|---|---|---|---|
-| 1 | Phone 1 | turn the Wi-Fi hotspot on, **then** open RigSync | header `01 <ip> LEADER`, status `wifi AP`, three buttons and two sliders (Figure 1) | about 15 s |
-| 2 | Phones 2 to 11 | join Phone 1's hotspot, then open RigSync | header `SYNCED`, line `leader <ip> reply … offset … ago`; clients have no buttons (Figure 2) | about 10 s each |
+| 1 | Phone 1 | turn the Wi-Fi hotspot on, **then** open RigSync | header `01 <ip> LEADER`, status `wifi AP`, three buttons and two sliders  | about 15 s |
+| 2 | Phones 2 to 11 | join Phone 1's hotspot, then open RigSync | header `SYNCED`, line `leader <ip> reply … offset … ago`; clients have no buttons | about 10 s each |
 | 3 | Phone 1 | drag the **exposure** and **ISO** sliders | previews neither too bright nor too dark on every phone; a value is sent to all phones when you release the slider | |
-| 4 | Phone 1 | tap **ALIGN PHASES** | `phase err` on every phone goes from red (tens of ms) to green (about 0.1 ms or less), with `aligned: err … after N injections` (Figure 3) | about 10 s |
-| 5 | Phone 1 | tap **RECORD VIDEO**; tap it again to stop | button turns red `RECORDING…`, status `● REC mm:ss` (Figure 4); clients show a toast `Started recording video` | the take |
+| 4 | Phone 1 | tap **ALIGN PHASES** | `phase err` on every phone goes from red (tens of ms) to green (about 0.1 ms or less), with `aligned: err … after N injections` | about 10 s |
+| 5 | Phone 1 | tap **RECORD VIDEO**; tap it again to stop | button turns red `RECORDING…`, status `● REC mm:ss`; clients show a toast `Started recording video` | the take |
 | 6 | Phone 1 | tap **RESET ALL** once it no longer reads `Waiting` | every phone restarts the app and comes back `SYNCED`; then redo steps 3 and 4 before the next take | about 15 s |
 
 `phase err` is how far this phone's frame timing sits from the leader's;
@@ -27,24 +24,9 @@ not in this public guide.
 
 ![Leader in standby](docs/img/leader-standby.png)
 
-**Figure 1.** The leader in standby, here Phone 07 during a bench test: header
-`LEADER`, status `wifi AP`, the three controls and the exposure and ISO
-sliders. `phase err −13.33 ms` in red is the state before alignment.
-
-![Client before alignment](docs/img/client-before-align.png)
-
-**Figure 2.** A client just after joining: `SYNCED` to the leader,
-`phase err +15.16 ms` in red because phases are not aligned yet, no buttons.
-
-![Client after alignment](docs/img/client-aligned.png)
-
-**Figure 3.** The same client after ALIGN PHASES: `phase err +0.07 ms` in
-green and `aligned: err +0.07 ms after 4 injections`.
-
-![Leader recording](docs/img/leader-recording.png)
-
-**Figure 4.** The leader while recording: the button reads `RECORDING…` in
-red and the status line shows `● REC 00:05`.
+**The leader in standby** (here Phone 07 on the bench): header `LEADER`,
+status `wifi AP`, the three controls and the two sliders. `phase err
+−13.33 ms` in red is the state before alignment; after step 4 it is green.
 
 ### Rules of a take
 
@@ -90,68 +72,19 @@ The stamps differ by a second or two across phones because each phone names
 files by its own clock; pair takes by order. Details in
 [docs/FORMAT.md](docs/FORMAT.md).
 
-## Post-processing: frame-aligned image sequences
-
-Needs Python 3.10 or newer (tested on 3.11) and `ffmpeg` / `ffprobe` on the PATH.
+Then the tools here turn those files into frame-aligned image sequences
+(Python 3.10+, with `ffmpeg` and `ffprobe` on the PATH):
 
 ```bash
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 .venv/bin/python tools/run_sync_pipeline.py <session>/raw --threshold 16ms
 ```
 
-The command runs five stages and modifies nothing on disk if the first check
-fails:
-
-1. **Discover cameras**: one video per `NN/VID/`.
-2. **Metadata gate**: video frame count (ffprobe) against CSV line count for
-   every camera; on any mismatch it prints the table and stops.
-3. **Timestamp match**: `<session>/output/<session>_16ms/matched.csv`, one
-   row per synchronized moment, one column per camera.
-4. **Extract and rename**: every frame to `raw/NN/images/<timestamp>.jpg`.
-5. **Move unmatched**: frames without a partner on some camera go to
-   `raw/NN/images/unmatched/`.
-
-Afterwards each camera's `images/` holds only the synchronized sequence, and a
-row of `matched.csv` names one image per camera. 16 ms is just under half of
-the 33.3 ms frame period at 30 fps, so a frame either has one partner per
-camera or none.
-
-| flag | default | meaning |
-|---|---|---|
-| `--threshold` | `16ms` | match tolerance (`ns`, `us`, `ms`, `s`) |
-| `--output-root` | `<session>/output` | where `<slug>_<threshold>/` goes |
-| `--session-slug` | folder above `raw` | label of the output folder |
-| `--match-mode` | `full` | `full`, or `first` to align by first matched frame and cut all cameras to equal length |
-| `--cpu` | off | force CPU decoding |
-| `--force-extract` | off | re-extract even if `images/` exists |
-| `--dry-run` | off | print the plan, write nothing |
-
-If the gate stops, a take was cut short on that phone. Reconcile explicitly:
-
-```bash
-.venv/bin/python tools/analyze_vid.py <session>/raw --truncate   # drop excess CSV lines
-.venv/bin/python tools/analyze_vid.py <session>/raw --pad_csv    # add marker lines the matcher ignores
-```
-
-The other two scripts are the stages as standalone commands: `tools/sync.py`
-(match, optionally `--extract`) and `tools/move_unmatched.py` (move, or
-`--move_back` to undo).
-
-Tests: `.venv/bin/pip install pytest && .venv/bin/python -m pytest`. They build
-tiny real videos with ffmpeg and run the whole pipeline on them.
-
-## How well the rig is synchronized
-
-The app's timing claim is checked optically, by filming an LED time-code
-panel with every phone at once and reading the code frame by frame. The
-measurements are published at
-<https://yubohuangai.github.io/syncbench/>, for example the
-[13-camera session of 2026-08-26](https://yubohuangai.github.io/syncbench/results/sync0826/frame_report_windows.html).
+Each camera's `images/` then holds only the synchronized frames, and a row of
+`<session>/output/<session>_16ms/matched.csv` names one image per camera. Run
+`--help` on any tool for its flags.
 
 ## License
 
-MIT, see [LICENSE](LICENSE). The RigSync app is a fork of
-[RecSync-android](https://github.com/MobileRoboticsSkoltech/RecSync-android)
-(Akhmetyanov et al., 2021), which builds on Google Research's
-[wireless software synchronization](https://arxiv.org/abs/1812.09366)
-(Ansari et al., 2019). The app is not part of this repository.
+MIT, see [LICENSE](LICENSE). The app itself is not part of this repository;
+it is a fork of [RecSync-android](https://github.com/MobileRoboticsSkoltech/RecSync-android).
